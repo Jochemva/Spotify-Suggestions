@@ -34,6 +34,7 @@ Jochem wil uit zijn Spotify-bubbel. Zijn aanbevelingen blijven hangen binnen wat
 - De Web Playback SDK werkt niet in mobiele browsers.
 
 ## Status (4 nov 2026)
+- Demomodus toegevoegd (knop op startscherm): app doorklikken zonder Spotify, met nepnummers.
 - v1 gebouwd en getest in Playwright (iPhone-emulatie, nagebootste API): alle schermen, vegen en het bijwerken van de playlist werken.
 - **Nog te doen door Jochem:** GitHub Pages aanzetten, een Spotify-app aanmaken (Redirect URI = het adres dat de app op het startscherm toont, inclusief hoofdletters) en de Client ID invullen.
 - **Nog niet getest met de echte Spotify API.** Controleer eerst of `/me/top/artists` nog `genres` teruggeeft. Zo niet, dan valt het profiel terug op het herkennen van artiestnamen.

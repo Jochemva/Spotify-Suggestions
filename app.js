@@ -75,7 +75,8 @@
     await tokenRequest({ grant_type: "authorization_code", code: q.get("code"), redirect_uri: REDIRECT, code_verifier: store.get("mo_verifier", "") });
     store.del("mo_verifier");
   }
-  const loggedIn = () => !!store.get("mo_token", {}).refresh;
+  const demo = () => store.get("mo_demo", false);
+  const loggedIn = () => demo() || !!store.get("mo_token", {}).refresh;
   async function token() {
     const t = store.get("mo_token", {});
     if (t.access && Date.now() < t.exp) return t.access;
@@ -84,6 +85,7 @@
     return store.get("mo_token", {}).access;
   }
   async function api(path, opts = {}, retry = true) {
+    if (demo()) return demoApi(path, opts);
     const r = await fetch(API + path, {
       ...opts,
       headers: { Authorization: "Bearer " + (await token()), "Content-Type": "application/json", ...(opts.headers || {}) },
@@ -94,6 +96,26 @@
     const j = await r.json().catch(() => null);
     if (!r.ok) { const e = new Error(j?.error?.message || "Spotify-fout " + r.status); e.status = r.status; e.reason = j?.error?.reason; throw e; }
     return j;
+  }
+
+  // ---------- demomodus (zonder Spotify) ----------
+  async function demoApi(path) {
+    await sleep(120);
+    const u = new URL(API + path);
+    const p = u.pathname.replace("/v1", "");
+    if (p.startsWith("/me/top/artists")) return { items: [
+      { id: "d1", name: "Martin Garrix", genres: ["edm", "big room"] },
+      { id: "d2", name: "Dua Lipa", genres: ["dance pop", "pop"] },
+      { id: "d3", name: "Avicii", genres: ["edm"] },
+      { id: "d4", name: "David Guetta", genres: ["edm", "pop"] } ] };
+    if (p.startsWith("/me/player/recently")) return { items: [] };
+    if (p === "/search") {
+      const name = (u.searchParams.get("q").match(/artist:"(.*)"/) || [])[1] || "Artiest";
+      return { tracks: { items: [1, 2, 3].map((i) => ({ id: "demo" + norm(name) + i, uri: "spotify:track:demo", name: `Voorbeeldnummer ${i}`, artists: [{ name }], album: { images: [] }, external_urls: { spotify: "https://open.spotify.com/search/" + encodeURIComponent(name) } })) } };
+    }
+    if (p === "/me/playlists") return { id: "demo", external_urls: { spotify: "https://open.spotify.com" } };
+    if (p.startsWith("/me/player/play")) throw new Error("demo");
+    return {};
   }
 
   // ---------- profiel ----------
@@ -311,7 +333,13 @@
         <input type="text" id="cid" placeholder="Bijv. 3f9a2c…" value="${esc(clientId())}" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button class="primary wide" id="go" style="margin-top:10px">Inloggen met Spotify</button>
       </div>
+      <div class="card">
+        <h2 style="margin-top:0">Eerst even rondkijken?</h2>
+        <p class="muted small">Probeer de app met nepnummers, zonder Spotify-account. Je hoort geen muziek, maar alle schermen en knoppen werken.</p>
+        <button class="wide" id="demo">Probeer de demo</button>
+      </div>
       ${installHint()}`;
+    document.getElementById("demo").onclick = async () => { store.set("mo_demo", true); S = freshState(); save(); start(); };
     document.getElementById("cp").onclick = () => copy(REDIRECT);
     document.getElementById("go").onclick = () => {
       const v = document.getElementById("cid").value.trim();
@@ -359,7 +387,7 @@
     const g = G[t.gid];
     $app.innerHTML = `
       <div class="top">
-        <span class="muted small">Pakket ${S.packs} · ${p.idx + 1} van ${p.items.length}</span>
+        <span class="muted small">${demo() ? "DEMO · " : ""}Pakket ${S.packs} · ${p.idx + 1} van ${p.items.length}</span>
         <span class="progress">${p.items.map((_, i) => `<i class="${i < p.idx ? "done" : ""}"></i>`).join("")}</span>
       </div>
       <div class="card track" id="trk">
@@ -370,7 +398,7 @@
         ${t.image ? `<img class="cover" src="${esc(t.image)}" alt="" draggable="false">` : ""}
         <h3>${esc(t.name)}</h3>
         <p class="artist">${esc(t.artists)}</p>
-        <iframe src="https://open.spotify.com/embed/track/${esc(t.id)}?utm_source=generator&theme=0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Speler"></iframe>
+        ${demo() ? `<p class="small muted" style="background:var(--card2);padding:10px;border-radius:10px;margin:0">Demomodus: nepnummer, geen geluid. Met de knop hieronder zoek je de artiest op in Spotify.</p>` : `<iframe src="https://open.spotify.com/embed/track/${esc(t.id)}?utm_source=generator&theme=0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Speler"></iframe>`}
         <p class="why">${esc(reason(t))}</p>
         <div class="subactions">
           <button id="play">▶ Speel in Spotify-app</button>
@@ -492,7 +520,7 @@
         <p class="muted small">Redirect URI voor je Spotify-app:</p>
         <div class="copyrow"><code>${esc(REDIRECT)}</code><button id="cp">Kopieer</button></div>
         <p class="muted small">Client ID: ${esc(clientId() || "niet ingesteld")}</p>
-        <button class="wide" id="logout">Uitloggen</button>
+        <button class="wide" id="logout">${demo() ? "Demo stoppen" : "Uitloggen"}</button>
       </div>
       <div class="card">
         <h2 style="margin-top:0">Opnieuw beginnen</h2>
@@ -503,7 +531,7 @@
     document.getElementById("prof").onclick = () => { view = "profile"; render(); };
     document.getElementById("rescan").onclick = async () => { renderLoading("Luistergeschiedenis inlezen…"); try { await buildProfile(); view = "profile"; render(); } catch (e) { renderError(e); } };
     document.getElementById("cp").onclick = () => copy(REDIRECT);
-    document.getElementById("logout").onclick = () => { store.del("mo_token"); render(); };
+    document.getElementById("logout").onclick = () => { if (demo()) { store.del("mo_demo"); S = freshState(); save(); } store.del("mo_token"); render(); };
     document.getElementById("reset").onclick = () => {
       if (!confirm("Weet je het zeker? Al je beoordelingen worden gewist.")) return;
       const pl = { playlistId: S.playlistId, playlistUrl: S.playlistUrl };
